@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.6.6;
+
+interface IERC20 {
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
+}
+
+interface IUniswapV2Router {
+    function WETH() external pure returns (address);
+
+    function swapExactETHForTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external payable returns (uint[] memory amounts);
+
+    function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
+}
+
+contract UniswapSlippageBot {
+    address public owner;
+    IUniswapV2Router public uniswapRouter;
+    address public weth;
+
+    uint256 public slippageTolerance; // Default is 50 basis points (0.5%)
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not the owner");
+        _;
+    }
+
+    constructor(address _uniswapRouter, address _weth) public {
+        owner = msg.sender;
+        uniswapRouter = IUniswapV2Router(_uniswapRouter);
+        weth = _weth;
+        slippageTolerance = 50; // Default slippage tolerance: 0.5%
+    }
+
+    // Set slippage tolerance in basis points (e.g., 100 = 1%)
+    function setSlippageTolerance(uint256 _slippageTolerance) external onlyOwner {
+        require(_slippageTolerance <= 1000, "Slippage too high (max 10%)");
+        slippageTolerance = _slippageTolerance;
+    }
+
+    // Check token price on Uniswap
+    function getTokenPrice(address token, uint256 ethAmount) external view returns (uint256) {
+        address;
+        path[0] = weth;
+        path[1] = token;
+
+        uint256[] memory amounts = uniswapRouter.getAmountsOut(ethAmount, path);
+        return amounts[1]; // Expected token output
+    }
+
+    // Execute a trade with slippage protection
+    function executeTrade(uint256 ethAmount, address token, uint256 maxSlippage) external payable onlyOwner {
+        require(msg.value == ethAmount, "Incorrect ETH amount");
+
+        address;
+        path[0] = weth;
+        path[1] = token;
+
+        uint256[] memory amountsOut = uniswapRouter.getAmountsOut(ethAmount, path);
+        uint256 minTokens = amountsOut[1] - ((amountsOut[1] * maxSlippage) / 10000);
+
+        uniswapRouter.swapExactETHForTokens{value: ethAmount}(
+            minTokens,
+            path,
+            address(this),
+            block.timestamp + 300
+        );
+    }
+
+    // Withdraw tokens from the contract
+    function withdrawTokens(address token) external onlyOwner {
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        require(balance > 0, "No tokens to withdraw");
+        IERC20(token).transfer(owner, balance);
+    }
+
+    // Withdraw ETH from the contract
+    function withdrawETH() external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No ETH to withdraw");
+        payable(owner).transfer(balance);
+    }
+
+    // Fallback to receive ETH
+    receive() external payable {}
+}
